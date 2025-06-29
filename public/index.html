@@ -2,17 +2,71 @@
 <html>
 <head>
   <title>Create Facebook Ad</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+    form { display: flex; flex-direction: column; gap: 10px; }
+    input, button, textarea { padding: 10px; font-size: 16px; }
+    button { background: #4267B2; color: white; border: none; cursor: pointer; }
+    #result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+    .success { background: #e6f7ee; border: 1px solid #a3e9c4; }
+    .error { background: #ffebee; border: 1px solid #ffcdd2; }
+  </style>
 </head>
 <body>
   <h1>Create a Facebook Ad</h1>
-  <form action="/create-ad" method="POST">
-    <input name="campaignName" placeholder="Campaign Name" required><br>
-    <input name="adSetName" placeholder="Ad Set Name" required><br>
-    <input name="adName" placeholder="Ad Name" required><br>
-    <input name="creativeTitle" placeholder="Ad Title" required><br>
-    <input name="creativeBody" placeholder="Ad Message" required><br>
-    <input name="pageId" placeholder="Facebook Page ID" required><br>
+  <form id="adForm">
+    <input name="campaignName" placeholder="Campaign Name" required>
+    <input name="adSetName" placeholder="Ad Set Name" required>
+    <input name="adName" placeholder="Ad Name" required>
+    <input name="creativeTitle" placeholder="Ad Title" required>
+    <textarea name="creativeBody" placeholder="Ad Message" required rows="3"></textarea>
+    <input name="pageId" placeholder="Facebook Page ID" required>
     <button type="submit">Create Ad</button>
   </form>
+  <div id="result"></div>
+
+  <script>
+    document.getElementById('adForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating...';
+      
+      const formData = new FormData(e.target);
+      const data = Object.fromEntries(formData.entries());
+      
+      try {
+        const response = await fetch('/create-ad', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        
+        const resultDiv = document.getElementById('result');
+        if (result.success) {
+          resultDiv.className = 'success';
+          resultDiv.innerHTML = `
+            <h3>Success!</h3>
+            <p>Campaign ID: ${result.campaignId}</p>
+            <p>Ad Set ID: ${result.adSetId}</p>
+            <p>Ad ID: ${result.adId}</p>
+          `;
+        } else {
+          throw new Error(result.error || 'Unknown error occurred');
+        }
+      } catch (error) {
+        document.getElementById('result').className = 'error';
+        document.getElementById('result').innerHTML = `
+          <h3>Error</h3>
+          <p>${error.message}</p>
+          ${error.details ? `<p>Details: ${error.details}</p>` : ''}
+        `;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Ad';
+      }
+    });
+  </script>
 </body>
 </html>
