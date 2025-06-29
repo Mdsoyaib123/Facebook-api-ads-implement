@@ -3,7 +3,6 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const adsSdk = require('facebook-nodejs-business-sdk');
 const path = require('path');
-const fetch = require('node-fetch');
 
 // Initialize Express
 const app = express();
@@ -23,7 +22,6 @@ if (!accessToken || !adAccountId) {
 }
 
 const api = adsSdk.FacebookAdsApi.init(accessToken);
-api.setApiVersion('v18.0'); // Use the latest API version
 api.setDebug(true);
 
 // SDK Models
@@ -46,38 +44,6 @@ const retryRequest = async (fn, retries = 3, delay = 1000) => {
   }
 };
 
-// Upload image to get image_hash
-const uploadImage = async (imageUrl) => {
-  console.log('Uploading image...');
-  try {
-    const response = await fetch(
-      `https://graph.facebook.com/v18.0/${adAccountId}/adimages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          url: imageUrl
-        })
-      }
-    );
-    const data = await response.json();
-    if (data.error) {
-      throw new Error(`Image upload failed: ${JSON.stringify(data.error)}`);
-    }
-    const imageHash = data.images?.[Object.keys(data.images)[0]]?.hash;
-    if (!imageHash) {
-      throw new Error('No image hash returned from upload');
-    }
-    console.log('Image uploaded, hash:', imageHash);
-    return imageHash;
-  } catch (error) {
-    throw new Error(`Image upload error: ${error.message}`);
-  }
-};
-
 // Create ad endpoint
 app.post('/create-ad', [
   body('campaignName').notEmpty().trim().escape(),
@@ -86,8 +52,7 @@ app.post('/create-ad', [
   body('creativeTitle').notEmpty().trim().escape(),
   body('creativeBody').notEmpty().trim().escape(),
   body('pageId').notEmpty().isString(),
-  body('link').isURL().withMessage('Invalid URL'),
-  body('imageUrl').isURL().withMessage('Invalid image URL')
+  body('link').isURL().withMessage('Invalid URL')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -101,8 +66,7 @@ app.post('/create-ad', [
     creativeTitle,
     creativeBody,
     pageId,
-    link,
-    imageUrl
+    link = 'https://www.example.com' // Default URL, replace with your own
   } = req.body;
 
   console.log('Request body:', req.body);
@@ -113,11 +77,7 @@ app.post('/create-ad', [
       throw new Error('Invalid adAccountId format. Must start with "act_"');
     }
 
-    // 1. Upload Image
-    console.log('Uploading image...');
-    const imageHash = await uploadImage(imageUrl);
-
-    // 2. Create Campaign
+    // 1. Create Campaign
     console.log('Creating campaign...');
     const campaign = await retryRequest(() =>
       new AdAccount(adAccountId).createCampaign(
@@ -133,7 +93,7 @@ app.post('/create-ad', [
     );
     console.log('Campaign created:', campaign.id);
 
-    // 3. Create Ad Set
+    // 2. Create Ad Set
     console.log('Creating ad set...');
     const adSet = await retryRequest(() =>
       new AdAccount(adAccountId).createAdSet(
@@ -159,7 +119,7 @@ app.post('/create-ad', [
     );
     console.log('Ad set created:', adSet.id);
 
-    // 4. Create Creative
+    // 3. Create Creative
     console.log('Creating creative...');
     const creative = await retryRequest(() =>
       new AdAccount(adAccountId).createAdCreative(
@@ -172,9 +132,8 @@ app.post('/create-ad', [
               link: link,
               message: creativeBody,
               name: creativeTitle,
-              description: 'Learn more about our product!',
-              call_to_action: { type: 'LEARN_MORE' },
-              image_hash: imageHash
+              description: 'Learn more about our product!', // Add description
+              call_to_action: { type: 'LEARN_MORE' }
             }
           },
           degrees_of_freedom_spec: {
@@ -188,7 +147,7 @@ app.post('/create-ad', [
     );
     console.log('Creative created:', creative.id);
 
-    // 5. Create Ad
+    // 4. Create Ad
     console.log('Creating ad...');
     const ad = await retryRequest(() =>
       new AdAccount(adAccountId).createAd(
@@ -214,8 +173,7 @@ app.post('/create-ad', [
   } catch (error) {
     console.error('Full API Error:', {
       message: error.message,
-      response: error.response?.data || error.stack,
-      request: error.request?._data
+      response: error.response?.data || error.stack
     });
     res.status(500).json({
       error: 'Ad creation failed',
