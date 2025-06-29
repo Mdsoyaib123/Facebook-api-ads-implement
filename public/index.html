@@ -21,6 +21,8 @@
     <input name="creativeTitle" placeholder="Ad Title" required>
     <textarea name="creativeBody" placeholder="Ad Message" required rows="3"></textarea>
     <input name="pageId" placeholder="Facebook Page ID" required>
+    <input name="link" type="url" placeholder="Link URL" value="https://www.example.com" required>
+    <input name="imageUrl" type="url" placeholder="Image URL (e.g., https://example.com/image.jpg)" required>
     <button type="submit">Create Ad</button>
   </form>
   <div id="result"></div>
@@ -39,10 +41,12 @@
       
       try {
         const formData = new FormData(form);
+        const payload = Object.fromEntries(formData);
+        console.log('Sending payload:', payload); // Log payload for debugging
         const response = await fetch('/create-ad', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Object.fromEntries(formData))
+          body: JSON.stringify(payload)
         });
         
         const result = await response.json();
@@ -53,17 +57,20 @@
             <h3>Success!</h3>
             <p>Campaign ID: ${result.campaignId}</p>
             <p>Ad Set ID: ${result.adSetId}</p>
+            <p>Creative ID: ${result.creativeId}</p>
             <p>Ad ID: ${result.adId}</p>
           `;
         } else {
-          throw new Error(result.error || 'Unknown error occurred');
+          throw new Error(result.details || result.error || 'Unknown error occurred');
         }
       } catch (error) {
+        console.error('Frontend error:', error); // Log error for debugging
         resultDiv.className = 'error';
         resultDiv.innerHTML = `
           <h3>Error</h3>
           <p>${error.message}</p>
-          ${error.details ? `<p>${error.details}</p>` : ''}
+          ${error.details ? `<p>Details: ${error.details}</p>` : ''}
+          ${result?.fbtrace_id ? `<p>FB Trace ID: ${result.fbtrace_id}</p>` : ''}
         `;
       } finally {
         submitBtn.disabled = false;

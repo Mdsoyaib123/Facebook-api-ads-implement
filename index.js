@@ -1,10 +1,9 @@
 require('dotenv').config();
-const { Console } = require('console');
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { CloudGame } = require('facebook-nodejs-business-sdk');
 const adsSdk = require('facebook-nodejs-business-sdk');
 const path = require('path');
+const fetch = require('node-fetch');
 
 // Initialize Express
 const app = express();
@@ -18,7 +17,13 @@ app.use(express.static('public'));
 // Initialize Facebook SDK
 const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
 const adAccountId = process.env.AD_ACCOUNT_ID;
+if (!accessToken || !adAccountId) {
+  console.error('Missing FACEBOOK_ACCESS_TOKEN or AD_ACCOUNT_ID in .env');
+  process.exit(1);
+}
+
 const api = adsSdk.FacebookAdsApi.init(accessToken);
+api.setApiVersion('v18.0'); // Use the latest API version
 api.setDebug(true);
 
 // SDK Models
@@ -34,9 +39,42 @@ const retryRequest = async (fn, retries = 3, delay = 1000) => {
     try {
       return await fn();
     } catch (error) {
+      console.error(`Attempt ${i + 1} failed:`, error.message);
       if (i === retries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
+  }
+};
+
+// Upload image to get image_hash
+const uploadImage = async (imageUrl) => {
+  console.log('Uploading image...');
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${adAccountId}/adimages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: imageUrl
+        })
+      }
+    );
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(`Image upload failed: ${JSON.stringify(data.error)}`);
+    }
+    const imageHash = data.images?.[Object.keys(data.images)[0]]?.hash;
+    if (!imageHash) {
+      throw new Error('No image hash returned from upload');
+    }
+    console.log('Image uploaded, hash:', imageHash);
+    return imageHash;
+  } catch (error) {
+    throw new Error(`Image upload error: ${error.message}`);
   }
 };
 
@@ -47,7 +85,9 @@ app.post('/create-ad', [
   body('adName').notEmpty().trim().escape(),
   body('creativeTitle').notEmpty().trim().escape(),
   body('creativeBody').notEmpty().trim().escape(),
-  body('pageId').notEmpty().isString()
+  body('pageId').notEmpty().isString(),
+  body('link').isURL().withMessage('Invalid URL'),
+  body('imageUrl').isURL().withMessage('Invalid image URL')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -60,74 +100,109 @@ app.post('/create-ad', [
     adName,
     creativeTitle,
     creativeBody,
-    pageId
+    pageId,
+    link,
+    imageUrl
   } = req.body;
-  
-  console.log(req.body)
+
+  console.log('Request body:', req.body);
 
   try {
-    // 1. Create Campaign - Using OUTCOME_TRAFFIC as objective
-    const campaign = await retryRequest(() => 
-      new AdAccount(adAccountId).createCampaign(['id', 'name'], {
-        name: campaignName,
-        objective: 'OUTCOME_TRAFFIC', // Valid current objective
-        status: 'PAUSED',
-        special_ad_categories: ['NONE'],
-        access_token: accessToken
-      })
+    // Validate adAccountId format
+    if (!adAccountId.startsWith('act_')) {
+      throw new Error('Invalid adAccountId format. Must start with "act_"');
+    }
+
+    // 1. Upload Image
+    console.log('Uploading image...');
+    const imageHash = await uploadImage(imageUrl);
+
+    // 2. Create Campaign
+    console.log('Creating campaign...');
+    const campaign = await retryRequest(() =>
+      new AdAccount(adAccountId).createCampaign(
+        ['id', 'name'],
+        {
+          name: campaignName,
+          objective: 'OUTCOME_TRAFFIC',
+          status: 'PAUSED',
+          special_ad_categories: [],
+          access_token: accessToken
+        }
+      )
     );
-  
-    // 2. Create Ad Set - Using LINK_CLICKS as optimization goal
+    console.log('Campaign created:', campaign.id);
+
+    // 3. Create Ad Set
+    console.log('Creating ad set...');
     const adSet = await retryRequest(() =>
-      new AdAccount(adAccountId).createAdSet(['id', 'name'], {
-        name: adSetName,
-        campaign_id: campaign.id,
-        daily_budget: 1000, // $10.00
-        billing_event: 'IMPRESSIONS',
-        optimization_goal: 'LINK_CLICKS', // Must match campaign objective
-        bid_amount: '100', // $1.00
-        targeting: {
-          geo_locations: { countries: ['US'] },
-          age_min: 18,
-          age_max: 65,
-          publisher_platforms: ['facebook'],
-          facebook_positions: ['feed']
-        },
-        status: 'PAUSED',
-        access_token: accessToken
-      })
+      new AdAccount(adAccountId).createAdSet(
+        ['id', 'name'],
+        {
+          name: adSetName,
+          campaign_id: campaign.id,
+          daily_budget: 1000, // $10.00 in cents
+          billing_event: 'IMPRESSIONS',
+          optimization_goal: 'LINK_CLICKS',
+          bid_amount: 100, // $1.00 in cents (integer)
+          targeting: {
+            geo_locations: { countries: ['US'] },
+            age_min: 18,
+            age_max: 65,
+            publisher_platforms: ['facebook'],
+            facebook_positions: ['feed']
+          },
+          status: 'PAUSED',
+          access_token: accessToken
+        }
+      )
     );
+    console.log('Ad set created:', adSet.id);
 
-  
-
-    // 3. Create Creative
+    // 4. Create Creative
+    console.log('Creating creative...');
     const creative = await retryRequest(() =>
-      new AdAccount(adAccountId).createAdCreative(['id', 'name'], {
-        name: creativeTitle,
-        object_story_spec: {
-          page_id: pageId,
-          link_data: {
-            link: 'https://www.example.com', // Change to your URL
-            message: creativeBody,
-            name: creativeTitle,
-            call_to_action: { type: 'LEARN_MORE' }
-          }
-        },
-        access_token: accessToken
-      })
+      new AdAccount(adAccountId).createAdCreative(
+        ['id', 'name'],
+        {
+          name: creativeTitle,
+          object_story_spec: {
+            page_id: pageId,
+            link_data: {
+              link: link,
+              message: creativeBody,
+              name: creativeTitle,
+              description: 'Learn more about our product!',
+              call_to_action: { type: 'LEARN_MORE' },
+              image_hash: imageHash
+            }
+          },
+          degrees_of_freedom_spec: {
+            creative_features_spec: {
+              standard_enhancements: { enroll: true }
+            }
+          },
+          access_token: accessToken
+        }
+      )
     );
-    
+    console.log('Creative created:', creative.id);
 
-    // 4. Create Ad
+    // 5. Create Ad
+    console.log('Creating ad...');
     const ad = await retryRequest(() =>
-      new AdAccount(adAccountId).createAd(['id', 'name'], {
-        name: adName,
-        adset_id: adSet.id,
-        creative: { creative_id: creative.id },
-        status: 'PAUSED',
-        access_token: accessToken
-      })
+      new AdAccount(adAccountId).createAd(
+        ['id', 'name'],
+        {
+          name: adName,
+          adset_id: adSet.id,
+          creative: { creative_id: creative.id },
+          status: 'PAUSED',
+          access_token: accessToken
+        }
+      )
     );
+    console.log('Ad created:', ad.id);
 
     res.json({
       success: true,
@@ -136,16 +211,16 @@ app.post('/create-ad', [
       creativeId: creative.id,
       adId: ad.id
     });
-
   } catch (error) {
     console.error('Full API Error:', {
       message: error.message,
-      response: error.response?.data || error.stack
+      response: error.response?.data || error.stack,
+      request: error.request?._data
     });
     res.status(500).json({
       error: 'Ad creation failed',
       details: error.response?.data?.error?.message || error.message,
-      fbtrace_id: error.response?.data?.fbtrace_id
+      fbtrace_id: error.response?.data?.error?.fbtrace_id
     });
   }
 });

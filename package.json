@@ -11,8 +11,9 @@
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "express-validator": "^7.2.1",
-    "facebook-nodejs-business-sdk": "^22.0.3",
+    "facebook-nodejs-business-sdk": "^23.0.0",
     "form-data": "^4.0.3",
-    "multer": "^2.0.1"
+    "multer": "^2.0.1",
+    "node-fetch": "^3.3.2"
   }
 }
