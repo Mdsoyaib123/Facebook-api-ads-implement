@@ -44,6 +44,9 @@ const retryRequest = async (fn, retries = 3, delay = 1000) => {
   }
 };
 
+// Hardcoded image hash (replace with your valid image hash)
+const imageHash = 'your_image_hash_here'; // Replace with a valid image hash
+
 // Create ad endpoint
 app.post('/create-ad', [
   body('campaignName').notEmpty().trim().escape(),
@@ -66,10 +69,10 @@ app.post('/create-ad', [
     creativeTitle,
     creativeBody,
     pageId,
-    link = 'https://www.example.com' // Default URL, replace with your own
+    link
   } = req.body;
 
-  console.log('Request body:', req.body);
+  console.log(req.body,'=req.body ========================================')
 
   try {
     // Validate adAccountId format
@@ -91,7 +94,7 @@ app.post('/create-ad', [
         }
       )
     );
-    console.log('Campaign created:', campaign.id);
+    console.log('Campaign created ========================:', campaign.id);
 
     // 2. Create Ad Set
     console.log('Creating ad set...');
@@ -117,7 +120,7 @@ app.post('/create-ad', [
         }
       )
     );
-    console.log('Ad set created:', adSet.id);
+    console.log('Ad set created:===================================', adSet.id);
 
     // 3. Create Creative
     console.log('Creating creative...');
@@ -132,13 +135,9 @@ app.post('/create-ad', [
               link: link,
               message: creativeBody,
               name: creativeTitle,
-              description: 'Learn more about our product!', // Add description
-              call_to_action: { type: 'LEARN_MORE' }
-            }
-          },
-          degrees_of_freedom_spec: {
-            creative_features_spec: {
-              standard_enhancements: { enroll: true }
+              description: 'Learn more about our product!',
+              call_to_action: { type: 'LEARN_MORE' },
+              image_hash: imageHash
             }
           },
           access_token: accessToken
@@ -173,7 +172,8 @@ app.post('/create-ad', [
   } catch (error) {
     console.error('Full API Error:', {
       message: error.message,
-      response: error.response?.data || error.stack
+      response: error.response?.data || error.stack,
+      request: error.request?._data
     });
     res.status(500).json({
       error: 'Ad creation failed',
