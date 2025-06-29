@@ -22,7 +22,6 @@
     <textarea name="creativeBody" placeholder="Ad Message" required rows="3"></textarea>
     <input name="pageId" placeholder="Facebook Page ID" required>
     <input name="link" type="url" placeholder="Link URL" value="https://www.example.com" required>
-    <input name="imageUrl" type="url" placeholder="Image URL (e.g., https://example.com/image.jpg)" required>
     <button type="submit">Create Ad</button>
   </form>
   <div id="result"></div>
@@ -64,12 +63,12 @@
           throw new Error(result.details || result.error || 'Unknown error occurred');
         }
       } catch (error) {
-        console.error('Frontend error:', error); // Log error for debugging
+        console.error('Frontend error:', error);
         resultDiv.className = 'error';
         resultDiv.innerHTML = `
           <h3>Error</h3>
           <p>${error.message}</p>
-          ${error.details ? `<p>Details: ${error.details}</p>` : ''}
+          ${result?.details ? `<p>Details: ${result.details}</p>` : ''}
           ${result?.fbtrace_id ? `<p>FB Trace ID: ${result.fbtrace_id}</p>` : ''}
         `;
       } finally {
