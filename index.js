@@ -1,6 +1,8 @@
 require('dotenv').config();
+const { Console } = require('console');
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const { CloudGame } = require('facebook-nodejs-business-sdk');
 const adsSdk = require('facebook-nodejs-business-sdk');
 const path = require('path');
 
@@ -60,28 +62,30 @@ app.post('/create-ad', [
     creativeBody,
     pageId
   } = req.body;
+  
+  console.log(req.body)
 
   try {
-    // 1. Create Campaign - Using LINK_CLICKS objective for simplicity
+    // 1. Create Campaign - Using OUTCOME_TRAFFIC as objective
     const campaign = await retryRequest(() => 
       new AdAccount(adAccountId).createCampaign(['id', 'name'], {
         name: campaignName,
-        objective: 'LINK_CLICKS', // Simple and reliable objective
+        objective: 'OUTCOME_TRAFFIC', // Valid current objective
         status: 'PAUSED',
         special_ad_categories: ['NONE'],
         access_token: accessToken
       })
     );
-
-    // 2. Create Ad Set - Matching optimization goal
+  
+    // 2. Create Ad Set - Using LINK_CLICKS as optimization goal
     const adSet = await retryRequest(() =>
       new AdAccount(adAccountId).createAdSet(['id', 'name'], {
         name: adSetName,
         campaign_id: campaign.id,
-        daily_budget: '1000', // In cents ($10)
+        daily_budget: 1000, // $10.00
         billing_event: 'IMPRESSIONS',
         optimization_goal: 'LINK_CLICKS', // Must match campaign objective
-        bid_amount: '100', // In cents ($1)
+        bid_amount: '100', // $1.00
         targeting: {
           geo_locations: { countries: ['US'] },
           age_min: 18,
@@ -93,6 +97,8 @@ app.post('/create-ad', [
         access_token: accessToken
       })
     );
+
+  
 
     // 3. Create Creative
     const creative = await retryRequest(() =>
@@ -110,6 +116,7 @@ app.post('/create-ad', [
         access_token: accessToken
       })
     );
+    
 
     // 4. Create Ad
     const ad = await retryRequest(() =>
@@ -133,13 +140,11 @@ app.post('/create-ad', [
   } catch (error) {
     console.error('Full API Error:', {
       message: error.message,
-      request: error.config?.data,
-      response: error.response?.data,
-      stack: error.stack
+      response: error.response?.data || error.stack
     });
     res.status(500).json({
       error: 'Ad creation failed',
-      details: error.response?.data?.error || error.message,
+      details: error.response?.data?.error?.message || error.message,
       fbtrace_id: error.response?.data?.fbtrace_id
     });
   }

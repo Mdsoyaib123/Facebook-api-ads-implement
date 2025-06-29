@@ -5,7 +5,7 @@
   <style>
     body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
     form { display: flex; flex-direction: column; gap: 10px; }
-    input, button, textarea { padding: 10px; font-size: 16px; }
+    input, textarea, button { padding: 10px; font-size: 16px; }
     button { background: #4267B2; color: white; border: none; cursor: pointer; }
     #result { margin-top: 20px; padding: 15px; border-radius: 4px; }
     .success { background: #e6f7ee; border: 1px solid #a3e9c4; }
@@ -28,22 +28,25 @@
   <script>
     document.getElementById('adForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const form = e.target;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const resultDiv = document.getElementById('result');
+      
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating...';
-      
-      const formData = new FormData(e.target);
-      const data = Object.fromEntries(formData.entries());
+      resultDiv.innerHTML = '';
+      resultDiv.className = '';
       
       try {
+        const formData = new FormData(form);
         const response = await fetch('/create-ad', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          body: JSON.stringify(Object.fromEntries(formData))
         });
+        
         const result = await response.json();
         
-        const resultDiv = document.getElementById('result');
         if (result.success) {
           resultDiv.className = 'success';
           resultDiv.innerHTML = `
@@ -56,11 +59,11 @@
           throw new Error(result.error || 'Unknown error occurred');
         }
       } catch (error) {
-        document.getElementById('result').className = 'error';
-        document.getElementById('result').innerHTML = `
+        resultDiv.className = 'error';
+        resultDiv.innerHTML = `
           <h3>Error</h3>
           <p>${error.message}</p>
-          ${error.details ? `<p>Details: ${error.details}</p>` : ''}
+          ${error.details ? `<p>${error.details}</p>` : ''}
         `;
       } finally {
         submitBtn.disabled = false;
